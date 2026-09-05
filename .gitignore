@@ -1,0 +1,9 @@
+# Compiled binaries (built via `make`)
+master
+mmu
+sched
+process
+*.out
+
+# Runtime output
+result.txt
