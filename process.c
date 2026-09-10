@@ -27,9 +27,27 @@ int signal_msg = 0;
  */
 void signalHandler(int sig) {
     if (sig == SIGUSR1) {
-        signal_msg = 1; 
+        signal_msg = 1;
     }
     signal(SIGUSR1, signalHandler);
+}
+
+/**
+ * @brief Blocks until SIGUSR1 is received, without the classic lost-wakeup race.
+ *
+ * A plain "if (signal_msg == 0) pause();" has a gap between the flag check
+ * and the pause() call: if SIGUSR1 arrives in that gap, the wakeup is lost
+ * and pause() sleeps forever. Blocking SIGUSR1 beforehand and waking via
+ * sigsuspend() makes the check-then-sleep step atomic, so no wakeup can be
+ * missed regardless of when the Scheduler's kill() lands.
+ *
+ * @param orig_set The signal mask to restore (with SIGUSR1 unblocked) while suspended.
+ */
+void waitForWakeup(sigset_t *orig_set) {
+    while (signal_msg == 0) {
+        sigsuspend(orig_set);
+    }
+    signal_msg = 0;
 }
 
 /**
@@ -73,14 +91,26 @@ int main(int argc, char *argv[]) {
     // Register signal handler for synchronization
     signal(SIGUSR1, signalHandler);
 
+    // Clear any signal mask inherited across fork()/exec() from the Master
+    // process first -- exec() preserves the caller's blocked-signal set, so
+    // without this, a SIGUSR1 that Master happened to have blocked would
+    // still be blocked here, and sigsuspend() below would never wake up.
+    sigset_t empty_set;
+    sigemptyset(&empty_set);
+    sigprocmask(SIG_SETMASK, &empty_set, NULL);
+
+    // Block SIGUSR1 so it can only ever be observed inside sigsuspend() below,
+    // closing the race window between checking signal_msg and going to sleep.
+    sigset_t block_set, orig_set;
+    sigemptyset(&block_set);
+    sigaddset(&block_set, SIGUSR1);
+    sigprocmask(SIG_BLOCK, &block_set, &orig_set);
+
     // Enqueue process in the Ready Queue (MQ1)
     msgsnd(MQ1_id, &msg, sizeof(msg.message), 0);
 
     // Wait for the Scheduler to signal start of execution
-    if (signal_msg == 0) {
-        pause();
-    }
-    signal_msg = 0;
+    waitForWakeup(&orig_set);
 
     struct pageFrame pgf_msg;
 
@@ -103,10 +133,7 @@ int main(int argc, char *argv[]) {
             token = strtok(NULL, ",");
         } else if (pgf_msg.message.data == -1) {
             // Page Fault: MMU is loading the page. Wait for Scheduler's signal.
-            if (signal_msg == 0) {
-                pause(); 
-            }
-            signal_msg = 0;
+            waitForWakeup(&orig_set);
             // Page is now resident in memory, proceed to the next request.
             token = strtok(NULL, ","); 
         } else if (pgf_msg.message.data == -2) {

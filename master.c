@@ -65,6 +65,13 @@ int main() {
     // Register synchronization handler for process completion
     signal(SIGUSR1, signalHandler);
 
+    // NOTE: SIGUSR1 is deliberately NOT blocked here yet. fork() copies the
+    // caller's signal mask and execve() preserves it, so blocking SIGUSR1
+    // before spawning sched/mmu/process would leak "blocked" into every
+    // child, permanently breaking their own sigsuspend()-based wakeups. The
+    // block happens further down, after all children are spawned, and only
+    // affects Master's own wait.
+
     // =========================================================================
     // 1. IPC INITIALIZATION (Shared Memory & Message Queues)
     // =========================================================================
@@ -129,6 +136,12 @@ int main() {
         sprintf(MQ2_str, "%d", MQ2_id);
         sprintf(num_process_str, "%d", k);
         execlp("./sched", "./sched", MQ1_str, MQ2_str, num_process_str, NULL);
+        // execlp only returns on failure. Without _exit() here, this child
+        // would otherwise fall through and keep running the rest of main()
+        // as a rogue second Master -- forking its own children and racing
+        // the real Master's IPC cleanup.
+        perror("execlp: ./sched");
+        _exit(EXIT_FAILURE);
     }
     
     if ((mmu_pid = fork()) == 0) { 
@@ -144,6 +157,8 @@ int main() {
 
         // Submits MMU binary to the current environment configuration
         execlp("./mmu", "./mmu", MQ2_str, MQ3_str, SM1_str, SM2_str, SM3_str, k_str, m_str, f_str, NULL);
+        perror("execlp: ./mmu");
+        _exit(EXIT_FAILURE);
     }
 
     // =========================================================================
@@ -224,6 +239,8 @@ int main() {
             sprintf(MQ1_str, "%d", MQ1_id);
             sprintf(MQ3_str, "%d", MQ3_id);
             execlp("./process", "./process", MQ1_str, MQ3_str, ref_str, NULL);
+            perror("execlp: ./process");
+            _exit(EXIT_FAILURE);
         }
         usleep(250000); // 250ms cadence delay to stagger process ingestion
     }
@@ -231,10 +248,17 @@ int main() {
     // =========================================================================
     // 5. SYSTEM SHUTDOWN & IPC DEALLOCATION
     // =========================================================================
-    
+
+    // Block SIGUSR1 only now, after every child has already been forked, so
+    // none of them inherit it as blocked (see the note near the top of main).
+    sigset_t block_set, orig_set;
+    sigemptyset(&block_set);
+    sigaddset(&block_set, SIGUSR1);
+    sigprocmask(SIG_BLOCK, &block_set, &orig_set);
+
     // Suspend parent execution pending Scheduler completion interrupt
-    if (waitSched == 1) {
-        pause();
+    while (waitSched == 1) {
+        sigsuspend(&orig_set);
     }
     waitSched = 0;
     printf("Scheduler finished. Cleaning up...\n");
