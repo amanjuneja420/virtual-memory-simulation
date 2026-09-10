@@ -38,7 +38,7 @@ graph TD
     Master -- "SIGINT: shutdown" --> Sched
     Master -- "SIGINT: shutdown" --> MMU
 
-    Master -.->|owns| SM["SM1 page table · SM2 free frames · SM3 page map"]
+    Master -.->|owns| SM["SM1 page table<br/>SM2 free frames<br/>SM3 page map"]
     MMU -.->|reads/writes| SM
 ```
 
@@ -66,16 +66,16 @@ After a fault the process is told to pause (`-1`) and the Scheduler re-queues it
 
 ```mermaid
 flowchart TD
-    A["MQ3 request: (pid, page_num)"] --> B{"page_num == -9 ?"}
-    B -- "yes (process finished its string)" --> C["Free all frames held by process\nMQ2: 2 (done) · completed_processes++"]
-    B -- no --> D{"page_num >= num_page ?"}
-    D -- "yes (out of bounds)" --> E["Free all frames held by process\nMQ3 reply: -2 (terminate)\nMQ2: 2 (done)"]
-    D -- no --> F{"page_table[i][p].valid ?"}
-    F -- "yes (hit)" --> G["Refresh pageTimeStamp[i][p]\nMQ3 reply: frame_no"]
-    F -- "no (fault)" --> H{"free_frame_list has a 1 ?"}
-    H -- yes --> I["Claim first free frame\nmark page valid"]
-    H -- "no (memory full)" --> J["Local LRU: among this process's\nvalid pages, evict max(timestamp - pageTimeStamp[i][j])"]
-    I --> K["MQ3 reply: -1 (wait)\nMQ2: 1 (fault handled)"]
+    A["MQ3 request:<br/>(pid, page_num)"] --> B{"page_num<br/>== -9 ?"}
+    B -- "yes: string<br/>finished" --> C["Free all frames<br/>held by process<br/>MQ2: 2 (done)"]
+    B -- no --> D{"page_num >=<br/>num_page ?"}
+    D -- "yes: out<br/>of bounds" --> E["Free all frames held<br/>MQ3 reply: -2 (terminate)<br/>MQ2: 2 (done)"]
+    D -- no --> F{"page_table<br/>valid ?"}
+    F -- "yes: hit" --> G["Refresh timestamp<br/>MQ3 reply: frame_no"]
+    F -- "no: fault" --> H{"free frame<br/>available ?"}
+    H -- yes --> I["Claim free frame<br/>mark page valid"]
+    H -- "no: memory<br/>full" --> J["Local LRU: evict this<br/>process's oldest valid page"]
+    I --> K["MQ3 reply: -1 (wait)<br/>MQ2: 1 (fault handled)"]
     J --> K
 ```
 
