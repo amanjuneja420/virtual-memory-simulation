@@ -9,3 +9,6 @@ process
 # committed to the repo as example output. Running ./master locally
 # will overwrite it (see README); `git checkout -- result.txt` restores
 # the committed sample, or just leave your own run uncommitted.
+
+# Personal study notes -- not meant for the public repo
+INTERVIEW_PREP.md
