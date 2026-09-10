@@ -5,5 +5,7 @@ sched
 process
 *.out
 
-# Runtime output
-result.txt
+# Note: result.txt is intentionally NOT ignored -- a sample run is
+# committed to the repo as example output. Running ./master locally
+# will overwrite it (see README); `git checkout -- result.txt` restores
+# the committed sample, or just leave your own run uncommitted.

@@ -177,6 +177,8 @@ Enter physical address space (Total frames): 20
 ```
 Master, Scheduler, and MMU log progress to stdout as they run; the MMU additionally writes a structured event log — global reference ordering, page faults, invalid references, and final per-process fault/error counts — to `result.txt` in the working directory.
 
+`result.txt` is opened with `O_TRUNC` (`mmu.c`), so **every run overwrites it completely** — it's a snapshot of the most recent run only, not an append-only log. A [`result.txt`](result.txt) from a real 4-process/8-page/5-frame run is committed to this repo as a worked example of the output format (hits, a fault-driven eviction under memory pressure, a clean completion, and two illegal-reference terminations all show up in it); running `./master` yourself will replace it locally with your own run.
+
 ### Clean
 ```bash
 make clean
